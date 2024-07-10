@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Closing</title>
+    <script>
+        function closeWindow() {
+            fetch('/shutdown', { method: 'POST' })
+                .catch(() => {
+                    const message = "Não foi possível fechar o servidor";
+                    console.error(message);
+                    alert(message);
+                });
+        }
+        window.onload = closeWindow;
+    </script>
+    <style>
+        body {
+            font-family: Archivo, Sans-serif;
+            background-color: #011533;
+            width: 100vw;
+            height: 100vh;
+        }
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100vw;
+            height: 100vh;
+        }
+        .box {
+            padding: 12px;
+            padding-left: 20px;
+            padding-right: 20px;
+            background-color: #ff3456;
+            border: 0;
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 1.175rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.3s ease;
+        }
+        .div-div {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content">
+        <div class="box">
+            <div class="div-div">Processo finalizado.</div>
+        </div>
+    </div>
+</body>
+</html>
