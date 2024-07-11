@@ -12,7 +12,7 @@ MAX_ATTEMPTS = 5
 # Minimum interval between messages sent through Whatsapp: recommended = 30 s
 MIN_INTERVAL = 30
 
-# Max messages sent every time the code runs: recommended = 50
+# Max messages sent every time the code runs: max recommended = 50
 MAX_TRIGGERS = 30
 
 # Number used for all time.sleep across the code as an interval to display info on terminal

@@ -1,3 +1,4 @@
+import os
 import time
 import pandas as pd
 from datetime import datetime
@@ -17,8 +18,9 @@ class CSVPromptHandler:
         data = df_manager.open_data("/files/apify/")
         selected_data = data[PROSPECTS_COLUMNS].copy()
         selected_data["cid"] = selected_data["cid"].astype(object)
-        df_manager.save_file_data(selected_data, "/files/clean/clean_data.csv", sheet_name="data")
+        success = df_manager.save_file_data(selected_data, "/files/clean/clean_data.csv", sheet_name="data")
         time.sleep(5)
+        return success
     
     def generate_csv_from_apify_to_email_marketing_platform(self) -> None:
         df_manager = DfManager()
@@ -46,24 +48,43 @@ class CSVPromptHandler:
                 "phoneUnformatted": "phone",
             }
         )
+        selected_data["email"] = selected_data["email"].apply(self.clean_email)
         print("DataFrame shape:", selected_data.shape)
         success = df_manager.save_file_data(selected_data, "/files/brevo/brevo_data.csv")
         time.sleep(2)
 
         return success
+    
+    def clean_email(self, email):
+        if isinstance(email, str):
+            return email.replace('//', '').lower()
+        return email
 
 class WhatsappExecution:
 
-    def __init__(self, execute_instance):
+    def __init__(self, execute_instance, remove_prompt_timers=False):
+        self._csv_prompt_handler = CSVPromptHandler()
+
         self.execute_instance = execute_instance
-    
-    def set_message(variant: str) -> str:
-        return """🌐 *{}*
+        self.max_triggers = MAX_TRIGGERS
+        self.message_interval = MIN_INTERVAL
 
-    👉 Nós, da Covenant, somos especialistas na criação de sites e ecommerces personalizados. Oferecemos design único, manutenção regular e serviços complementares para otimizar sua presença digital. 🚀 Criamos plataformas personalizadas, com design exclusivo, otimizadas para SEO e que se adaptam a qualquer dispositivo.
+        # List with columns to be saved on final DataFrame
+        self._mobile_bool_list = []
+        # True counter to be used inside for loop
+        self._num = 0
 
-    📲 Me responde com "SIM" e vamos marcar um bate-papo sem compromisso para discutir suas necessidades e como podemos te ajudar a alcançar seus objetivos! 😉
-    """.format(variant)
+        self._remove_timers = remove_prompt_timers
+
+        self._prompt_one_executed = False
+        self._prompt_two_executed = False
+        self.file_exists = False
+
+        self.df_manager = None
+        self.start_time = None
+        self.end_time = None
+        self.filtered_data = None
+        self.percentage = None
     
     def time_calc(self, interval: int, triggers: int) -> None:
         total_time = interval * triggers
@@ -76,19 +97,27 @@ class WhatsappExecution:
             return 1
         return 0
     
-    def print_execution_time(self, start_time, end_time) -> None:
-        elapsed_time_seconds = end_time - start_time
+    def is_mobile(self, number: str) -> bool:
+        split_number = number.split()
+        is_mobile = split_number[2].startswith("9")
+        return is_mobile
+ 
+    def print_execution_time(self) -> None:
+        elapsed_time_seconds = self.end_time - self.start_time
         elapsed_time_minutes = elapsed_time_seconds / 60
 
         print(f"Tempos de execução: {elapsed_time_minutes:.2f} minutos")
 
-    def prompts(self) -> None:
-        generate_new_clean_data_csv = input("Gerar nova tabela com dados limpos? (y) ")
+    def prompt_one(self) -> None:
+        self.generate_new_clean_data_csv = input("Gerar nova tabela com dados limpos? (y) ")
         limit = 0
+        if self._remove_timers:
+            self._prompt_one_executed = True
+            return
         while True:
-            message_interval = int(input("Defina intervalo entre as mensagens no disparo. (mínimo de {} segundos) ".format(MIN_INTERVAL)))
+            self.message_interval = int(input("Defina intervalo entre as mensagens no disparo. (mínimo de {} segundos) ".format(MIN_INTERVAL)))
             limit += 1
-            if message_interval >= MIN_INTERVAL:
+            if self.message_interval >= MIN_INTERVAL:
                 break
             else:
                 print("Intervalo mínimo é de {} segundos. Tente novamente.".format(MIN_INTERVAL))
@@ -98,9 +127,9 @@ class WhatsappExecution:
         if limit < MAX_ATTEMPTS:
             limit = 0
             while True:
-                max_triggers = int(input("Defina o total de disparos. (máximo de {} disparos) ".format(MAX_TRIGGERS)))
+                self.max_triggers = int(input("Defina o total de disparos. (máximo de {} disparos) ".format(MAX_TRIGGERS)))
                 limit += 1
-                if max_triggers <= MAX_TRIGGERS:
+                if self.max_triggers <= MAX_TRIGGERS:
                     break
                 else:
                     print("Por questões de segurança o máximo de disparos por vez é de {} disparos. Tente novamente.".format(MAX_TRIGGERS))
@@ -108,24 +137,116 @@ class WhatsappExecution:
                     print("Execução será encerrada")
                     break
             if limit < MAX_ATTEMPTS:
-                return {
-                    "generate_new_clean_data_csv": generate_new_clean_data_csv,
-                    "message_interval": message_interval,
-                    "max_triggers": max_triggers,
-                }
-            return None
-        return None
+                self._prompt_one_executed = True
+    
+    def prompt_two(self) -> None:
+        self.start_time = time.time()
+
+        time.sleep(GLOBAL_TIMER)
+        print()
+        print("Iniciando execução")
+
+        if not self._remove_timers:
+            time.sleep(GLOBAL_TIMER)
+            print()
+            print(self.time_calc(self.message_interval, self.max_triggers))
+
+        if self.generate_new_clean_data_csv == "y":
+            time.sleep(GLOBAL_TIMER)
+            print()
+            self._csv_prompt_handler.generate_clean_csv_files_from_apify()
+        else:
+            time.sleep(GLOBAL_TIMER)
+            print()
+            print("Nenhuma tabela nova foi gerada")
+        
+        if not self._remove_timers:
+            time.sleep(GLOBAL_TIMER)
+            print()
+            print("Intervalo definido entre mensagens de {} segundos".format(self.message_interval))
+
+        self.df_manager = DfManager()
+        clean_data = self.df_manager.open_data("/files/clean/", dtype={"send_cid": str})
+        clean_data["cid"] = clean_data["cid"].apply(lambda x: int(float(x)))
+
+        time.sleep(5)
+
+        # Removing rows without phone numbers
+        self.filtered_data = clean_data[clean_data['phone'].notna() & (clean_data['phone'].str.startswith(BRAZIL_PREFIX) | pd.isnull(clean_data['phone']))]
+        # Removing all prospects that already received messages
+        sent = self.df_manager.open_data("/files/sent/", selected_file="sent.csv", dtype={"send_cid": str})
+        list_sent_cids = []
+        print()
+        if not isinstance(sent, pd.DataFrame):
+            print("Arquivo com prospectos enviados ainda não existe")
+        else:
+            self.file_exists = True
+            sent["send_cid"] = sent["send_cid"].apply(lambda x: int(float(x)))
+            sent["send_cid"] = sent["send_cid"]
+            list_sent_cids = sent["send_cid"].to_list()
+            print("Excluindo prospectos que já receberam mensagem")
+            self.filtered_data = self.filtered_data[~self.filtered_data["cid"].isin(list_sent_cids)]
+        
+        self._prompt_two_executed = True
     
     def extract_csv_data(self):
         ...
     
     # filtered_data
-    # mobile_bool_list
+    # _mobile_bool_list
     # df_manager
     # max_triggers
     # message_interval
     def trigger_all_messages_in_loop(self, filtered_data):
         ...
+
+class FlaskExecution:
+    
+    def __init__(self) -> None:
+        self._whatsapp_execution_instance = WhatsappExecution(self, remove_prompt_timers=True)
+    
+    def run_flask(self) -> None:
+        self._whatsapp_execution_instance.prompt_one()
+
+        if self._whatsapp_execution_instance._prompt_one_executed:
+            self._whatsapp_execution_instance.prompt_two()
+
+            cids = []
+            names = []
+            number = []
+            mobile_bool = []
+            dates = []
+            for index, row in self._whatsapp_execution_instance.filtered_data.iterrows():
+                current_trigger = self._whatsapp_execution_instance._num + 1
+
+                # Identifies if number is mobile or not
+                is_mobile = self._whatsapp_execution_instance.is_mobile(row["phone"])
+
+                if is_mobile:
+
+                    cids.append(row["cid"])
+                    names.append(row["title"])
+                    number.append(row["phone"])
+                    mobile_bool.append(self._whatsapp_execution_instance.bool_number(is_mobile))
+                    dates.append(datetime.now())
+
+                    self._whatsapp_execution_instance._num += 1
+
+                    if current_trigger >= self._whatsapp_execution_instance.max_triggers:
+                        print("current_trigger:", current_trigger)
+                        break
+            
+            pre_df = {
+                "send_cid": cids,
+                "names": names,
+                "number": number,
+                "is_mobile": mobile_bool,
+                "time": dates,
+            }
+            temp_df = pd.DataFrame(pre_df)
+            self._whatsapp_execution_instance.df_manager.save_file_data(temp_df, "/files/sent/sent_temp.csv", float_format="%.0f")
+
+            os.system("python app.py")
 
 class Execute:
 
@@ -133,6 +254,7 @@ class Execute:
         self._csv_prompt_handler = CSVPromptHandler()
         self._whatsapp_execution_instance = WhatsappExecution(self)
         #self._generate_csvs_for_email_marketing_instance = GenerateCsvsForEmailMarketing(self)
+        self._flask_execution = FlaskExecution()
 
     def csv_for_email_marketing_execution(self) -> None:
         print("Iniciando extração e exportação de arquivo CSV adaptado para plataforma de e-mail marketing")
@@ -150,64 +272,11 @@ class Execute:
             print("Arquivo não pôde ser gerado")
             print()
 
-    def whatsapp_execution(self) -> None:
-            prompt = self._whatsapp_execution_instance.prompts()
+    def whatsapp_trigger_execution(self) -> None:
+            self._whatsapp_execution_instance.prompt_one()
 
-            if prompt:
-                start_time = time.time()
-
-                time.sleep(GLOBAL_TIMER)
-                print()
-                print("Iniciando execução")
-
-                time.sleep(GLOBAL_TIMER)
-                generate_new_clean_data_csv, message_interval, max_triggers = prompt["generate_new_clean_data_csv"], prompt["message_interval"], prompt["max_triggers"]
-                print()
-                print(self._whatsapp_execution_instance.time_calc(message_interval, max_triggers))
-
-                if generate_new_clean_data_csv == "y":
-                    time.sleep(GLOBAL_TIMER)
-                    print()
-                    self._csv_prompt_handler.generate_clean_csv_files_from_apify()
-                else:
-                    time.sleep(GLOBAL_TIMER)
-                    print()
-                    print("Nenhuma tabela nova foi gerada")
-
-                time.sleep(GLOBAL_TIMER)
-                print()
-                print("Intervalo definido entre mensagens de {} segundos".format(message_interval))
-                print("Aguarde pois o disparo começará em breve")
-
-                df_manager = DfManager()
-                clean_data = df_manager.open_data("/files/clean/", dtype={"send_cid": str})
-                clean_data["cid"] = clean_data["cid"].apply(lambda x: int(float(x)))
-
-                time.sleep(5)
-
-                # List with columns to be saved on final DataFrame
-                mobile_bool_list = []
-
-                # True counter to be used inside for loop
-                num = 0
-
-                # Removing rows without phone numbers
-                filtered_data = clean_data[clean_data['phone'].notna() & (clean_data['phone'].str.startswith(BRAZIL_PREFIX) | pd.isnull(clean_data['phone']))]
-                # Removing all prospects that already received messages
-                # dtype={"send_cid": str} makes column send_cid to be read as strings to prevent data corruption
-                sent = df_manager.open_data("/files/sent/", selected_file="sent.csv", dtype={"send_cid": str})
-                list_sent_cids = []
-                file_exists = False
-                if not isinstance(sent, pd.DataFrame):
-                    print("Arquivo com prospectos enviados ainda não existe")
-                else:
-                    file_exists = True
-                    # dtype={"send_cid": str} turned send_cid as strings but they need to be integers
-                    sent["send_cid"] = sent["send_cid"].apply(lambda x: int(float(x)))
-                    sent["send_cid"] = sent["send_cid"]
-                    list_sent_cids = sent["send_cid"].to_list()
-                    print("Extraindo prospectos que já receberam mensagem")
-                    filtered_data = filtered_data[~filtered_data["cid"].isin(list_sent_cids)]
+            if self._whatsapp_execution_instance._prompt_one_executed:
+                self._whatsapp_execution_instance.prompt_two()
 
                 sender = Sender()
                 print()
@@ -215,21 +284,19 @@ class Execute:
                 print("Enviando requisições para a rota: {}".format(sender.api_url))
                 print()
                 time.sleep(GLOBAL_TIMER)
-                #time.sleep(100000)
 
-                #DIVIDER = "____________________________________________________________________________________"
-                for index, row in filtered_data.iterrows():
-                    current_trigger = num + 1
+                for index, row in self._whatsapp_execution_instance.filtered_data.iterrows():
+                    current_trigger = self._whatsapp_execution_instance._num + 1
 
                     # Identifies if number is mobile or not
                     split_number = row["phone"].split()
-                    is_mobile = split_number[2].startswith("9")
+                    is_mobile = is_mobile = self._whatsapp_execution_instance.is_mobile(row["phone"])
 
                     if is_mobile:
                         print()
                         print(DIVIDER)
                         print()
-                        mobile_bool_list.append(self._whatsapp_execution_instance.bool_number(is_mobile))
+                        self._whatsapp_execution_instance._mobile_bool_list.append(self._whatsapp_execution_instance.bool_number(is_mobile))
 
                         # Removing first digit (9) when DDD is not from SP
                         if split_number[1] not in list(range(11, 20)) and is_mobile:
@@ -246,9 +313,9 @@ class Execute:
                         mobile_bool = self._whatsapp_execution_instance.bool_number(is_mobile)
                         dates = datetime.now()
                         print()
-                        print(VARIANTS[num % len(VARIANTS)])
+                        print(VARIANTS[self._whatsapp_execution_instance._num % len(VARIANTS)])
                         print()
-                        #body = sender.body_formatter(phone=clean_phone, message=self._whatsapp_execution_instance.set_message(VARIANTS[num % len(VARIANTS)]))
+                        #body = sender.body_formatter(phone=clean_phone, message=sender.set_message(VARIANTS[_whatsapp_execution_instance._num % len(VARIANTS)]))
                         #resp = sender.wpp_send_message(body)
 
                         if True: # resp.status_code == 200:
@@ -259,15 +326,15 @@ class Execute:
                                 "is_mobile": [mobile_bool],
                                 "time": [dates],
                             }
-                            if file_exists:
-                                sent = df_manager.open_data("/files/sent/", selected_file="sent.csv")
+                            if self._whatsapp_execution_instance.file_exists:
+                                sent = self._whatsapp_execution_instance.df_manager.open_data("/files/sent/", selected_file="sent.csv")
                             sent_cids = pd.DataFrame(next_df)
                             final_sent_cids = pd.concat([sent, sent_cids])
                             print()
                             print("Salvando dados do prospecto")
                             # float_format="%.0f" i used to prevent the column send_cid to be saved without any data changes
-                            df_manager.save_file_data(final_sent_cids, "/files/sent/sent.csv", float_format="%.0f")
-                            file_exists = True
+                            self._whatsapp_execution_instance.df_manager.save_file_data(final_sent_cids, "/files/sent/sent.csv", float_format="%.0f")
+                            self._whatsapp_execution_instance.file_exists = True
 
                             # Terminal messages to inform the user
                             print("Disparo n {}: Mensagem enviado para empresa {} no Whatsapp {} / {}.".format(current_trigger, row["title"], row["phone"], int(row["phoneUnformatted"])))
@@ -275,26 +342,28 @@ class Execute:
                         else:
                             print("ERRO: Disparo n {} para empresa {} não foi possível no número {} / {}.".format(current_trigger, row["title"], row["phone"], int(row["phoneUnformatted"])))
 
-                        if current_trigger != max_triggers:
-                            print("Aguarde próximo envio em {} segundos".format(message_interval))
-                        if current_trigger >= max_triggers:
+                        if current_trigger != self._whatsapp_execution_instance.max_triggers:
+                            print("Aguarde próximo envio em {} segundos".format(self._whatsapp_execution_instance.message_interval))
+                        if current_trigger >= self._whatsapp_execution_instance.max_triggers:
                             time.sleep(3)
                             print()
                             print(DIVIDER)
                             print()
                             print("Execução finalizada")
                             break
-                        time.sleep(message_interval)
+                        time.sleep(self._whatsapp_execution_instance.message_interval)
 
-                        num += 1
+                        self._whatsapp_execution_instance._num += 1
                     else:
                         continue
                     
-                end_time = time.time()
-                self._whatsapp_execution_instance.print_execution_time(start_time, end_time)
+                self._whatsapp_execution_instance.end_time = time.time()
+                self._whatsapp_execution_instance.print_execution_time() #(self.start_time, self.end_time)
 
-                percentage = (sum(mobile_bool_list) / len(mobile_bool_list)) * 100
+                self._whatsapp_execution_instance.percentage = (sum(self._whatsapp_execution_instance._mobile_bool_list) / len(self._whatsapp_execution_instance._mobile_bool_list)) * 100
                 print()
-                print("Total de números de celular (%): {}%".format(percentage))
+                print("Total de números de celular (%): {}%".format(self._whatsapp_execution_instance.percentage))
                 print()
-
+    
+    def whatsapp_flask_execution(self) -> None:
+        self._flask_execution.run_flask()

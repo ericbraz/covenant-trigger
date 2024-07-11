@@ -12,7 +12,7 @@ class DfManager:
         self.__path = path
         pass
 
-    def open_data(self, relativepath, selected_file=False, dtype=None):
+    def open_data(self, relativepath: str, selected_file: str=False, dtype: str=None) -> None | pd.DataFrame:
         all_data = None
         fpath = path(relativepath)
 
@@ -41,7 +41,7 @@ class DfManager:
             print("Error: '{}' is not a directory.".format(relativepath))
         return all_data
 
-    def save_file_data(self, df, filepathname, index=False, float_format=None, sheet_name=None):
+    def save_file_data(self, df, filepathname: str, index=False, float_format=None, sheet_name=None) -> None:
         fpath = path(filepathname)
         success = False
         try:
@@ -67,7 +67,7 @@ class DfManager:
             success = True
         return success
     
-    def save_ids(self, df, filepathname, index=False, float_format=None):
+    def save_ids(self, df, filepathname: str, index=False, float_format=None) -> None:
         fpath = self.__path(filepathname)
         try:
             if float_format:
@@ -76,6 +76,13 @@ class DfManager:
                 df.to_csv(fpath, index=index)
         except Exception as e:
             print(e)
+    
+    def clean_telephones(self, telephone: str) -> str:
+        return telephone.replace("+", "").replace(" ", "").replace("-", "")
+    
+    def remove_file(self, filepathname: str) -> None:
+        fpath = path(filepathname)
+        os.remove(fpath)
 
 def main():
     # Below an example of the code sending a message

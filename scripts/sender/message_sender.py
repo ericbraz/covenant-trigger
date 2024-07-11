@@ -9,12 +9,14 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 import requests
+import urllib.parse
 from config import API_URL
+from scripts.data_cleaner.df_manager import DfManager
 
 class Sender:
     def __init__(self):
         self.api_url = API_URL
-        pass
+        self._df_manager = DfManager()
 
     def __api_request(self, method, url, body=None, headers={}, params=None):
         method = method.upper()
@@ -43,7 +45,7 @@ class Sender:
         response = self.__api_request(method="post", url=self.api_url + endpoint, body=body, headers=headers)
         return response
     
-    def body_formatter(self, phone, message, reply_id=None):
+    def body_formatter(self, phone, message, reply_id=None) -> dict:
         phone_number = "{}@s.whatsapp.net".format(phone)
         body = {
             "phone": phone_number,
@@ -52,6 +54,20 @@ class Sender:
         }
         return body
     
+    def set_message(self, variant: str) -> str:
+        return f"""🌐 *{variant}*
+
+    👉 Nós, da Covenant, somos especialistas na criação de sites e ecommerces personalizados. Oferecemos design único, manutenção regular e serviços complementares para otimizar sua presença digital. 🚀 Criamos plataformas personalizadas, com design exclusivo, otimizadas para SEO e que se adaptam a qualquer dispositivo.
+
+    📲 Me responde com "SIM" e vamos marcar um bate-papo sem compromisso para discutir suas necessidades e como podemos te ajudar a alcançar seus objetivos! 😉
+    """
+
+    def whatsapp_link_formatter(self, whatsapp: str, variant_text="") -> str:
+        clean_wpp = self._df_manager.clean_telephones(whatsapp)
+        formatted_text = self.set_message(variant_text)
+        encoded_variant_text = urllib.parse.quote(formatted_text)
+        return f"https://web.whatsapp.com/send?phone={clean_wpp}&text={encoded_variant_text}"
+
     def send_test(self, number: str, message: str=None):
         phone_number = number
         if not message:
