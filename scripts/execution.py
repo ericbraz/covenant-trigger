@@ -98,7 +98,11 @@ class WhatsappExecution:
         return 0
     
     def is_mobile(self, number: str) -> bool:
+        if not isinstance(number, (int, float)):
+            return False
         split_number = number.split()
+        if len(split_number) != 3:
+            return False
         is_mobile = split_number[2].startswith("9")
         return is_mobile
  
@@ -109,7 +113,7 @@ class WhatsappExecution:
         print(f"Tempos de execução: {elapsed_time_minutes:.2f} minutos")
 
     def prompt_one(self) -> None:
-        self.generate_new_clean_data_csv = input("Gerar nova tabela com dados limpos? (y) ")
+        self.generate_new_clean_data_csv = input("Há novos arquivos gerados pelo Apify? (y) ")
         limit = 0
         if self._remove_timers:
             self._prompt_one_executed = True
